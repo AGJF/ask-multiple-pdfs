@@ -1,14 +1,14 @@
 import streamlit as st
+import os
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings, HuggingFaceInstructEmbeddings
-from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_community.vectorstores import FAISS
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationalRetrievalChain
 from htmlTemplates import css, bot_template, user_template
-from langchain.llms import HuggingFaceHub
+from openai import RateLimitError, AuthenticationError 
 
 def get_pdf_text(pdf_docs):
     text = ""
@@ -20,8 +20,7 @@ def get_pdf_text(pdf_docs):
 
 
 def get_text_chunks(text):
-    text_splitter = CharacterTextSplitter(
-        separator="\n",
+    text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
@@ -52,6 +51,9 @@ def get_conversation_chain(vectorstore):
 
 
 def handle_userinput(user_question):
+    if st.session_state.conversation is None:
+        st.warning("Document Yet to Process, Process The Attached Document First.")
+        return
     response = st.session_state.conversation({'question': user_question})
     st.session_state.chat_history = response['chat_history']
 
@@ -68,6 +70,9 @@ def main():
     load_dotenv()
     st.set_page_config(page_title="Chat with multiple PDFs",
                        page_icon=":books:")
+    if not os.getenv("OPENAI_API_KEY"):
+        st.error("No API KEY! Kindly Head to OpenAI Wbsite to Get an API For The Application to Work.")
+        return
     st.write(css, unsafe_allow_html=True)
 
     if "conversation" not in st.session_state:
@@ -85,6 +90,9 @@ def main():
         pdf_docs = st.file_uploader(
             "Upload your PDFs here and click on 'Process'", accept_multiple_files=True)
         if st.button("Process"):
+            if not pdf_docs:
+                st.warning("No PDF Files Uploaded, Unable To Process Any Data")
+                return
             with st.spinner("Processing"):
                 # get pdf text
                 raw_text = get_pdf_text(pdf_docs)
@@ -92,12 +100,21 @@ def main():
                 # get the text chunks
                 text_chunks = get_text_chunks(raw_text)
 
-                # create vector store
-                vectorstore = get_vectorstore(text_chunks)
+                try:
+                    # create vector store
+                    vectorstore = get_vectorstore(text_chunks)
 
-                # create conversation chain
-                st.session_state.conversation = get_conversation_chain(
-                    vectorstore)
+                    # create conversation chain
+                    st.session_state.conversation = get_conversation_chain(vectorstore)
+                except RateLimitError:
+                    st.session_state.conversation = None
+                    st.warning("API Credit Not Enough, Go Top Up Your Credit")
+                    return
+                except AuthenticationError:
+                    st.session_state.conversation = None
+                    st.warning("Invalid API Key, Please Check Your API Key")
+                    return
+
 
 
 if __name__ == '__main__':
