@@ -13,17 +13,46 @@ from openai import RateLimitError, AuthenticationError
 # bad key) so we can show a helpful message instead of an unhandled
 # exception crashing the Streamlit app.
 
-def get_pdf_text(pdf_docs):
+def get_document_text(uploaded_files):
     # RAG STAGE: LOAD
-    # Extracts raw text from each uploaded PDF and concatenates it all
-    # into a single string, regardless of how many files were uploaded.
+    # Loops through all uploaded files (which may be a mix of PDF, DOCX,
+    # TXT, and MD), identifies each file's type by its extension, and
+    # routes it to the matching extractor function. Unsupported file
+    # types are skipped (with a warning naming the file) rather than
+    # aborting the whole batch, so the rest of the upload still gets
+    # processed. Returns all extracted text concatenated together.
     text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
+    extractors = {
+        "pdf": get_pdf_text,
+        "docx": get_docx_text,
+        "txt": get_txt_text,
+        "md": get_md_text
+    }
+    for file in uploaded_files:
+        file_type = identify_file_type(file.name)
+        if file_type not in extractors:
+            st.warning(f"'{file.name}' is not processed due to not supported file type. Kindly upload a pdf, docx, txt or md")
+            continue
+        text += extractors[file_type](file)
     return text
 
+def identify_file_type(filename):
+    root, ext = os.path.splitext(filename)
+    return ext.removeprefix(".")
+
+def get_txt_text(file):
+    # get the raw data from file 
+    # without moving the file pointer with .getvalue()
+    # decode the raw data into readable text with .decode()
+    text = file.getvalue().decode("utf-8")
+    return text
+
+def get_pdf_text(file):
+    text = ""
+    pdf_reader = PdfReader(file)
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
 
 def get_text_chunks(text):
     # RAG STAGE: CHUNK
