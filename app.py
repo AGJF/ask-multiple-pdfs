@@ -12,6 +12,9 @@ from openai import RateLimitError, AuthenticationError
 # Imported to catch specific OpenAI API failures (quota exceeded,
 # bad key) so we can show a helpful message instead of an unhandled
 # exception crashing the Streamlit app.
+from docx import Document
+# to read text from .docx file
+
 
 def get_document_text(uploaded_files):
     # RAG STAGE: LOAD
@@ -47,7 +50,26 @@ def get_txt_text(file):
     text = file.getvalue().decode("utf-8")
     return text
 
+def get_md_text(file):
+    # get the raw data from file 
+    # without moving the file pointer with .getvalue()
+    # decode the raw data into readable text with .decode()
+    # although get_txt_text and get_md_text is identical but separate 
+    # into 2 function for future development
+    text = file.getvalue().decode("utf-8")
+    return text
+
+def get_docx_text(file):
+    # import Document from docx and read text into a list
+    # join list with "\n" because RecursiveCharacterTextSplitter split text
+    # based on "\n", "\n\n" and " "
+    # limitation: if file has table, the table wont be captured by doc.paragraphs
+    doc = Document(file)
+    text = [para.text for para in doc.paragraphs]
+    return "\n".join(text)
+
 def get_pdf_text(file):
+    # for each page of pdf file extract the text and concatenate the text
     text = ""
     pdf_reader = PdfReader(file)
     for page in pdf_reader.pages:
@@ -151,18 +173,22 @@ def main():
 
     with st.sidebar:
         st.subheader("Your documents")
-        pdf_docs = st.file_uploader(
-            "Upload your PDFs here and click on 'Process'", accept_multiple_files=True)
+        # accepting 4 types of file
+        document_docs = st.file_uploader(
+            "Upload your files here (Supported file types: .pdf, .docx, .md, .txt) and click on 'Process'", 
+            accept_multiple_files=True,
+            type = ["pdf", "docx", "md", "txt"]
+            )
         if st.button("Process"):
             # Guard clause: nothing to process if the user hasn't
             # uploaded any files.
-            if not pdf_docs:
+            if not document_docs:
                 st.warning("No PDF Files Uploaded, Unable To Process Any Data")
                 return
             with st.spinner("Processing"):
                 # Full pipeline: LOAD -> CHUNK -> EMBED/STORE -> build
                 # the retrieval+generation chain, in that order.
-                raw_text = get_pdf_text(pdf_docs)
+                raw_text = get_document_text(document_docs)
                 text_chunks = get_text_chunks(raw_text)
                 try:
                     vectorstore = get_vectorstore(text_chunks)
