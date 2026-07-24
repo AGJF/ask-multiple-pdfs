@@ -148,7 +148,7 @@ def handle_userinput(user_question):
 
 def main():
     load_dotenv()
-    st.set_page_config(page_title="Chat with multiple PDFs",
+    st.set_page_config(page_title="Chat with multiple files",
                        page_icon=":books:")
     
     # Guard clause: fail fast with a clear message if no API key is set,
@@ -166,9 +166,11 @@ def main():
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = None
 
-    st.header("Chat with multiple PDFs :books:")
-    user_question = st.text_input("Ask a question about your documents:")
-    if user_question:
+    st.header("Chat with multiple files :books:")
+    with st.form(key="question_form", clear_on_submit=True, enter_to_submit=True):
+        user_question = st.text_input("Ask a question about your documents:")
+        submitted = st.form_submit_button("Ask")
+    if submitted and user_question:
         handle_userinput(user_question)
 
     with st.sidebar:
