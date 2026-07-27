@@ -41,7 +41,7 @@ def get_document_text(uploaded_files):
 
 def identify_file_type(filename):
     root, ext = os.path.splitext(filename)
-    return ext.removeprefix(".")
+    return ext.removeprefix(".").lower()
 
 def get_txt_text(file):
     # get the raw data from file 
@@ -170,8 +170,11 @@ def main():
     with st.form(key="question_form", clear_on_submit=True, enter_to_submit=True):
         user_question = st.text_input("Ask a question about your documents:")
         submitted = st.form_submit_button("Ask")
-    if submitted and user_question:
-        handle_userinput(user_question)
+    if submitted:
+        if user_question:
+            handle_userinput(user_question)
+        else:
+            st.warning("You have yet to type any question down, ask something you are interested about!")    
 
     with st.sidebar:
         st.subheader("Your documents")
