@@ -24,7 +24,7 @@ def get_document_text(uploaded_files):
     # types are skipped (with a warning naming the file) rather than
     # aborting the whole batch, so the rest of the upload still gets
     # processed. Returns all extracted text concatenated together.
-    text = ""
+    paragraphs = []
     extractors = {
         "pdf": get_pdf_text,
         "docx": get_docx_text,
@@ -36,7 +36,8 @@ def get_document_text(uploaded_files):
         if file_type not in extractors:
             st.warning(f"'{file.name}' is not processed due to not supported file type. Kindly upload a pdf, docx, txt or md")
             continue
-        text += extractors[file_type](file)
+        paragraphs.append(extractors[file_type](file))
+    text = "\n\n".join(paragraphs)
     return text
 
 def identify_file_type(filename):
