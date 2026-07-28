@@ -136,15 +136,17 @@ def handle_userinput(user_question):
     response = st.session_state.conversation({'question': user_question})
     st.session_state.chat_history = response['chat_history']
 
+    chat_html = "<div class='chat-container'>"
     # Chat history alternates user/bot messages, so even indices are the
     # user's turns and odd indices are the bot's replies.
     for i, message in enumerate(st.session_state.chat_history):
         if i % 2 == 0:
-            st.write(user_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
+            chat_html += user_template.replace("{{MSG}}", message.content)
         else:
-            st.write(bot_template.replace(
-                "{{MSG}}", message.content), unsafe_allow_html=True)
+            chat_html += bot_template.replace("{{MSG}}", message.content)
+    chat_html += "</div>"
+
+    st.write(chat_html, unsafe_allow_html = True)
 
 
 def main():
@@ -214,6 +216,7 @@ def main():
                     st.session_state.conversation = None
                     st.warning("Invalid API Key, Please Check Your API Key")
                     return
+            st.success("Process Complete!")
 
 
 
