@@ -23,7 +23,7 @@ def get_document_text(uploaded_files):
     # routes it to the matching extractor function. Unsupported file
     # types are skipped (with a warning naming the file) rather than
     # aborting the whole batch, so the rest of the upload still gets
-    # processed. Returns all extracted text concatenated together.
+    # processed. Returns all extracted text as a list of tuple [(filename, text), (filename, text)...]
     paragraphs = []
     extractors = {
         "pdf": get_pdf_text,
@@ -36,9 +36,8 @@ def get_document_text(uploaded_files):
         if file_type not in extractors:
             st.warning(f"'{file.name}' is not processed due to not supported file type. Kindly upload a pdf, docx, txt or md")
             continue
-        paragraphs.append(extractors[file_type](file))
-    text = "\n\n".join(paragraphs)
-    return text
+        paragraphs.append((file.name, (extractors[file_type](file))))
+    return paragraphs
 
 def identify_file_type(filename):
     root, ext = os.path.splitext(filename)
@@ -77,21 +76,25 @@ def get_pdf_text(file):
         text += page.extract_text()
     return text
 
-def get_text_chunks(text):
+def get_text_chunks(document_pairs):
     # RAG STAGE: CHUNK
     # Splits the raw text into overlapping chunks so each piece is small
     # enough to embed meaningfully, while overlap preserves context that
     # would otherwise be lost at chunk boundaries.
+    all_chunks = []
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
-    chunks = text_splitter.split_text(text)
-    return chunks
+    for filename, text in document_pairs:
+        chunks = text_splitter.split_text(text)
+        for chunk in chunks:
+            all_chunks.append((chunk, filename))
+    return all_chunks
 
 
-def get_vectorstore(text_chunks):
+def get_vectorstore(document_pairs):
     # RAG STAGE: EMBED + STORE
     # Converts each chunk into a vector embedding and stores them in a
     # FAISS index for fast similarity search later. Uses OpenAI's
@@ -100,7 +103,12 @@ def get_vectorstore(text_chunks):
     # embeddings = HuggingFaceInstructEmbeddings(model_name="hkunlp/instructor-xl")
     # Alternative: swap in a local/open-source embedding model instead of
     # OpenAI's, to avoid API costs (not currently used).
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+    chunks = []
+    metadatas = []
+    for chunk, metadata in document_pairs:
+        chunks.append(chunk)
+        metadatas.append({"source": metadata})
+    vectorstore = FAISS.from_texts(texts=chunks, metadatas=metadatas, embedding=embeddings)
     return vectorstore
 
 
@@ -114,11 +122,12 @@ def get_conversation_chain(vectorstore):
     # Alternative: swap in a free-tier HuggingFace-hosted LLM instead of
     # OpenAI's ChatGPT model (not currently used).
     memory = ConversationBufferMemory(
-        memory_key='chat_history', return_messages=True)
+        memory_key='chat_history', return_messages=True, output_key='answer')
     conversation_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
-        retriever=vectorstore.as_retriever(),
-        memory=memory
+        retriever=vectorstore.as_retriever(search_kwargs={"k": 2}),
+        memory=memory,
+        return_source_documents=True
     )
     return conversation_chain
 
@@ -144,6 +153,10 @@ def handle_userinput(user_question):
             chat_html += user_template.replace("{{MSG}}", message.content)
         else:
             chat_html += bot_template.replace("{{MSG}}", message.content)
+
+    sources = set(doc.metadata["source"] for doc in response["source_documents"])
+    citation_text = "Sources: " + ", ".join(sources)
+    chat_html += f"<div class='source'>{citation_text}</div>"
     chat_html += "</div>"
 
     st.write(chat_html, unsafe_allow_html = True)
@@ -196,10 +209,10 @@ def main():
             with st.spinner("Processing"):
                 # Full pipeline: LOAD -> CHUNK -> EMBED/STORE -> build
                 # the retrieval+generation chain, in that order.
-                raw_text = get_document_text(document_docs)
-                text_chunks = get_text_chunks(raw_text)
+                document_pairs = get_document_text(document_docs)
+                chunked_pairs = get_text_chunks(document_pairs)
                 try:
-                    vectorstore = get_vectorstore(text_chunks)
+                    vectorstore = get_vectorstore(chunked_pairs)
                     st.session_state.conversation = get_conversation_chain(vectorstore)
                 except RateLimitError:
                     # Catches OpenAI quota/billing errors during embedding or chat

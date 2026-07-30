@@ -31,6 +31,13 @@ css = '''
     padding: 0.5rem 0;
     max-width: 70%;
 }
+.source{
+    font-size: 0.8rem;
+    color: #888;
+    font-style: italic;
+    margin-top: 0.25rem;
+    margin-left: 0.5rem;
+}
 </style>
 '''
 
